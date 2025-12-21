@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: luxe-app-ingress
+  namespace: luxe-app
+  annotations:
+    # This tells AWS to create the Load Balancer
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    # Health check path (Adjust if your app doesn't have /)
+    alb.ingress.kubernetes.io/healthcheck-path: /
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: luxe-app-service
+                port:
+                  number: 80

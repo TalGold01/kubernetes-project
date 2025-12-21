@@ -1,0 +1,24 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - echo Installing kubectl...
+      # Download kubectl (v1.30 to match/support our v1.32 cluster)
+      - curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.30.0/2024-05-12/bin/linux/amd64/kubectl
+      - chmod +x ./kubectl
+      - mv ./kubectl /usr/local/bin/kubectl
+  pre_build:
+    commands:
+      - echo Logging into EKS...
+      - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region us-east-1
+  build:
+    commands:
+      - echo Deploying to Kubernetes...
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      
+      # Replace IMAGE_PLACEHOLDER in deployment.yaml with the real image URI from ECR
+      # We use the ECR_REPO_URL env var passed from Terraform
+      - sed -i "s|IMAGE_PLACEHOLDER|$ECR_REPO_URL:$COMMIT_HASH|g" k8s/deployment.yaml
+      
+      # Apply the manifests to the cluster
+      - kubectl apply -f k8s/ -n luxe-app

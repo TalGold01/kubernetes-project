@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: luxe-app
+  namespace: luxe-app
+  labels:
+    app: luxe-app
+spec:
+  replicas: 1 # Start with 1 to save resources
+  selector:
+    matchLabels:
+      app: luxe-app
+  template:
+    metadata:
+      labels:
+        app: luxe-app
+    spec:
+      serviceAccountName: default
+      containers:
+      - name: luxe-app-container
+        # This placeholder is replaced by your GitHub Pipeline
+        image: IMAGE_PLACEHOLDER 
+        ports:
+        - containerPort: 80 # CHANGE THIS if your app uses 3000 or 8080!
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        
+        # Step 9: Mount AWS Secrets as files
+        volumeMounts:
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+
+      volumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "luxe-aws-secrets"

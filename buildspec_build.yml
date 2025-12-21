@@ -1,0 +1,24 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO_URL
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t $ECR_REPO_URL:latest .
+      - docker tag $ECR_REPO_URL:latest $ECR_REPO_URL:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker image...
+      - docker push $ECR_REPO_URL:latest
+      - docker push $ECR_REPO_URL:$IMAGE_TAG
+      # This file helps pass variables if we used Deploy providers, but we use kubectl directly
+      - printf '[{"name":"luxe-app-container","imageUri":"%s"}]' $ECR_REPO_URL:$IMAGE_TAG > imagedefinitions.json
+artifacts:
+  files: imagedefinitions.json
