@@ -10,6 +10,7 @@ phases:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
+      # Build from the current directory (.) where Dockerfile is located
       - docker build -t $ECR_REPO_URL:latest .
       - docker tag $ECR_REPO_URL:latest $ECR_REPO_URL:$IMAGE_TAG
   post_build:
@@ -18,7 +19,6 @@ phases:
       - echo Pushing the Docker image...
       - docker push $ECR_REPO_URL:latest
       - docker push $ECR_REPO_URL:$IMAGE_TAG
-      # This file helps pass variables if we used Deploy providers, but we use kubectl directly
       - printf '[{"name":"luxe-app-container","imageUri":"%s"}]' $ECR_REPO_URL:$IMAGE_TAG > imagedefinitions.json
 artifacts:
   files: imagedefinitions.json
