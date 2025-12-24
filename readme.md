@@ -1,104 +1,96 @@
-Luxe Jewelry Store - AWS Cloud Migration Project
+# 💎 Luxe Jewelry Store - AWS Cloud Migration Project
 
-📖 Project Overview
+## 📖 Project Overview
 
-This project demonstrates a full migration of a legacy workload to a cloud-native architecture on AWS. It leverages Infrastructure as Code (Terraform), Kubernetes (EKS), and GitOps principles to achieve a scalable, secure, and cost-optimized deployment.
+This project demonstrates a full migration of a legacy workload to a cloud-native architecture on AWS. It leverages **Infrastructure as Code (Terraform)**, **Kubernetes (EKS)**, and **GitOps principles** to achieve a scalable, secure, and cost-optimized deployment.
 
-🏗️ Architecture Architecture
+---
 
-1. Infrastructure (Terraform)
+## 🏗️ Architecture
 
-Compute: Amazon EKS v1.32 (Standard Support) using Spot Instances (t3.micro/t3.small) for 70% cost reduction.
+### 1. Infrastructure (Terraform)
 
-Networking: Custom VPC with Public/Private subnets. NAT Gateways are disabled to minimize Free Tier costs; nodes utilize Public IPs for egress.
+* **Compute:** Amazon EKS v1.32 (Standard Support) using **Spot Instances** (`t3.micro`) for 70% cost reduction.
+* **Networking:** Custom VPC with Public/Private subnets. **NAT Gateways are disabled** to minimize Free Tier costs; nodes utilize Public IPs for egress via Security Groups.
+* **CI/CD Agents:** Self-Hosted GitHub Runners on EC2, managed by an **Auto Scaling Group** (ASG) and Launch Template.
+* **Storage:**
+  * **ECR:** Private container registry with immutable tags.
+  * **S3 + CloudFront:** Hosting for static frontend assets (Bonus).
+  * **AWS Backup:** Automated daily retention for EC2 instances.
 
-CI/CD Agents: Self-Hosted GitHub Runners on EC2, managed by an Auto Scaling Group (ASG) and Launch Template.
-
-Storage: * ECR: Private container registry with immutable tags.
-
-S3 + CloudFront: Hosting for static frontend assets (Bonus).
-
-AWS Backup: Automated daily retention for EC2 instances.
-
-2. CI/CD Pipelines
+### 2. CI/CD Pipelines
 
 We implemented two parallel pipelines to demonstrate flexibility:
 
-GitHub Actions:
+1. **GitHub Actions:**
+   * Runs on self-hosted EC2 runners.
+   * Builds Docker image -> Pushes to ECR -> Deploys to EKS.
+   * Sends SNS notifications on status.
 
-Runs on self-hosted EC2 runners.
+2. **AWS CodePipeline:**
+   * Native AWS integration.
+   * **CodeBuild 1:** Builds & Pushes Docker image.
+   * **CodeBuild 2:** Authenticates via IAM and deploys manifests to EKS.
 
-Builds Docker image -> Pushes to ECR -> Deploys to EKS.
+### 3. Kubernetes Configuration
 
-Sends SNS notifications on status.
+* **Ingress:** AWS Load Balancer Controller (ALB) for external access.
+* **Scaling:** Cluster Autoscaler + Metrics Server for HPA.
+* **Secrets:** AWS Secrets Store CSI Driver to mount secrets (DB passwords) directly from AWS Secrets Manager into Pods.
+* **Namespaces:** `luxe-app`, `luxe-github`, `luxe-argo`.
 
-AWS CodePipeline:
+---
 
-Native AWS integration.
+## 🚀 How to Deploy
 
-CodeBuild 1: Builds & Pushes Docker image.
+### Prerequisites
 
-CodeBuild 2: Authenticates via IAM and deploys manifests to EKS.
+* AWS CLI configured.
+* Terraform v1.0+.
+* GitHub Personal Access Token (PAT).
 
-3. Kubernetes Configuration
+### Step 1: Infrastructure Provisioning
 
-Ingress: AWS Load Balancer Controller (ALB) for external access.
-
-Scaling: Cluster Autoscaler + Metrics Server for HPA.
-
-Secrets: AWS Secrets Store CSI Driver to mount secrets (DB passwords) directly from AWS Secrets Manager into Pods.
-
-Namespaces: luxe-app, luxe-github, luxe-argo.
-
-🚀 How to Deploy
-
-Prerequisites
-
-AWS CLI configured.
-
-Terraform v1.0+.
-
-GitHub Personal Access Token (PAT).
-
-Step 1: Infrastructure Provisioning
-
+```bash
 cd terraform
 terraform init
 terraform apply --auto-approve
+```
 
+### Step 2: Configuration
 
-Step 2: Configuration
+1. **Inject GitHub Token:**
+   ```bash
+   aws secretsmanager put-secret-value --secret-id github-runner-token --region us-east-1 --secret-string "{\"token\":\"ghp_YOUR_TOKEN\"}"
+   ```
 
-Inject GitHub Token:
+2. **Activate Runner:**
+   * Go to AWS Console -> EC2 -> Auto Scaling Groups.
+   * Scale `luxe-runner-asg` to **1**.
 
-aws secretsmanager put-secret-value --secret-id github-runner-token --region us-east-1 --secret-string "{\"token\":\"ghp_YOUR_TOKEN\"}"
+3. **Authorize Pipeline:**
+   * Go to AWS Console -> Developer Tools -> Settings -> Connections.
+   * Update Pending Connection for GitHub.
 
+### Step 3: Application Deployment
 
-Activate Runner: Scale ASG luxe-runner-asg to 1.
+Push changes to the `main` branch to trigger the pipeline.
 
-Authorize Pipeline: Update Pending Connection in AWS Developer Tools.
-
-Step 3: Application Deployment
-
-Push changes to main branch to trigger the pipeline.
-
+```bash
 git push origin main
+```
 
+---
 
-💰 FinOps & Optimization Highlights
+## 💰 FinOps & Optimization Highlights
 
-Zero-Cost Idle: Runners scale to 0 when not in use.
+* **Zero-Cost Idle:** Runners scale to 0 when not in use.
+* **Spot Strategy:** Usage of `capacity-optimized` allocation strategy for EKS nodes.
+* **Storage Cleanup:** S3 Lifecycle policies delete artifacts after 7 days.
+* **Network:** Elimination of NAT Gateway charges (~$30/mo savings).
 
-Spot Strategy: Usage of capacity-optimized allocation strategy for EKS nodes.
+## 🛡️ Security Measures
 
-Storage cleanup: S3 Lifecycle policies delete artifacts after 7 days.
-
-Network: Elimination of NAT Gateway charges (~$30/mo savings).
-
-🛡️ Security Measures
-
-No Hardcoded Secrets: All tokens fetched dynamically from Secrets Manager.
-
-Least Privilege: IAM roles scoped strictly to required resources (IRSA).
-
-Network Isolation: Database and App layers isolated in private subnets (logic ready
+* **No Hardcoded Secrets:** All tokens fetched dynamically from Secrets Manager.
+* **Least Privilege:** IAM roles scoped strictly to required resources (IRSA).
+* **Network Isolation:** Database and App layers isolated in private subnets.
