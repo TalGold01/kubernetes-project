@@ -1,0 +1,94 @@
+name: Build and Deploy
+
+# -----------------------------------------------------------
+# 👇 THIS IS YOUR WEBHOOK / TRIGGER
+# -----------------------------------------------------------
+on:
+  push:
+    branches: [ "main", "feature/*" ] # Triggers on push to main OR feature branches
+  workflow_dispatch:                  # Allows manual button click
+    inputs:
+      runner_type:
+        description: 'Select Runner'
+        required: true
+        default: 'ubuntu-latest'
+        type: choice
+        options:
+        - ubuntu-latest
+        - self-hosted
+
+# -----------------------------------------------------------
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: luxe-jewelry-store-project
+  EKS_CLUSTER_NAME: luxe-eks
+  SNS_TOPIC_ARN: arn:aws:sns:us-east-1:349020400385:luxe-pipeline-notifications
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ${{ inputs.runner_type || 'self-hosted' }} # Default to your EC2 Runner if triggered by push
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # Logic to choose Dev vs Prod namespace based on branch
+    - name: Set Environment
+      id: env-selector
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "NAMESPACE=luxe-app-prod" >> $GITHUB_ENV
+          echo "Deploying to PRODUCTION environment"
+        else
+          echo "NAMESPACE=luxe-app-dev" >> $GITHUB_ENV
+          echo "Deploying to DEVELOPMENT environment"
+        fi
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and Push
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "Building Docker image..."
+        # Assumes Dockerfile is in the root. If in backend/, change to: docker build -t ... ./backend
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Update KubeConfig
+      run: |
+        aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+    - name: Deploy to EKS
+      run: |
+        # 1. Update Image in deployment.yaml
+        sed -i "s|IMAGE_PLACEHOLDER|${{ steps.build-image.outputs.image }}|g" k8s/deployment.yaml
+
+        # 2. Update Namespace in all yaml files (Dev vs Prod)
+        sed -i "s|namespace: luxe-app|namespace: ${{ env.NAMESPACE }}|g" k8s/*.yaml
+
+        # 3. Apply to Cluster
+        kubectl apply -f k8s/ -n ${{ env.NAMESPACE }}
+
+    - name: Notify SNS
+      if: always()
+      run: |
+        STATUS="${{ job.status }}"
+        aws sns publish \
+          --topic-arn ${{ env.SNS_TOPIC_ARN }} \
+          --message "Deployment to ${{ env.NAMESPACE }} finished with status: $STATUS" \
+          --subject "EKS Deployment Notification"

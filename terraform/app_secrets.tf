@@ -14,12 +14,7 @@ resource "aws_secretsmanager_secret_version" "app_config_val" {
   })
 }
 
-# CRITICAL: Give the EKS Nodes permission to read this secret
-# We attach this to the OIDC provider we created for the CSI driver
-# (Note: In a strict environment, we would make a dedicated Role for the ServiceAccount, 
-# but for this project, attaching to the Node Role or a generic OIDC role is acceptable/easier).
-
-# Creating a dedicated role for the App Service Account (Best Practice)
+# Creating a dedicated role for the App Service Account
 resource "aws_iam_role" "app_sa_role" {
   name = "luxe-app-sa-role"
 
@@ -32,8 +27,10 @@ resource "aws_iam_role" "app_sa_role" {
       }
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
-        StringEquals = {
-          "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" = "system:serviceaccount:luxe-app:default"
+        # FIX: Changed to StringLike to allow wildcard matching
+        StringLike = {
+          # This allows system:serviceaccount:luxe-app-dev:default AND luxe-app-prod:default
+          "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" = "system:serviceaccount:luxe-app-*:default"
         }
       }
     }]
