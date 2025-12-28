@@ -72,6 +72,11 @@ resource "aws_codebuild_project" "deploy" {
       name  = "EKS_CLUSTER_NAME"
       value = module.eks.cluster_name
     }
+    # CRITICAL: Needed so buildspec_deploy.yml can replace the image placeholder
+    environment_variable {
+      name  = "ECR_REPO_URL"
+      value = aws_ecr_repository.luxe_repo.repository_url
+    }
   }
 
   source {
@@ -104,7 +109,7 @@ resource "aws_codepipeline" "pipeline" {
 
       configuration = {
         ConnectionArn    = aws_codestarconnections_connection.github.arn
-        FullRepositoryId = "TalGold01/kubernetes-project" # Update this if using a different repo
+        FullRepositoryId = "TalGold01/kubernetes-project" # Ensure this matches your Repo
         BranchName       = "main"
       }
     }
@@ -131,7 +136,7 @@ resource "aws_codepipeline" "pipeline" {
     name = "Deploy"
     action {
       name            = "Deploy"
-      category        = "Build" # Using CodeBuild to run kubectl
+      category        = "Build" # CodeBuild acting as Deployer
       owner           = "AWS"
       provider        = "CodeBuild"
       input_artifacts = ["source_output", "build_output"]

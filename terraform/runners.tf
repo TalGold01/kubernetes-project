@@ -1,5 +1,5 @@
 ##########################
-# 1. Data Source
+# 1. Data Source: Latest Amazon Linux 2023
 ##########################
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true
@@ -11,7 +11,7 @@ data "aws_ami" "amazon_linux_2023" {
 }
 
 ##########################
-# 2. Secrets Manager
+# 2. Secrets Manager (Shell)
 ##########################
 resource "aws_secretsmanager_secret" "github_token" {
   name        = "github-runner-token"
@@ -20,7 +20,7 @@ resource "aws_secretsmanager_secret" "github_token" {
 }
 
 ##########################
-# 3. IAM Role
+# 3. IAM Role for Runner
 ##########################
 resource "aws_iam_role" "runner_role" {
   name = "luxe-github-runner-role"
@@ -34,6 +34,7 @@ resource "aws_iam_role" "runner_role" {
   })
 }
 
+# Allow Runner to read the GitHub Token Secret
 resource "aws_iam_policy" "runner_secrets_policy" {
   name = "LuxeRunnerSecretsPolicy"
   policy = jsonencode({
@@ -56,20 +57,41 @@ resource "aws_iam_role_policy_attachment" "runner_ssm_attach" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# --- Permissions for CI/CD Pipeline ---
+resource "aws_iam_role_policy_attachment" "runner_ecr_attach" {
+  role       = aws_iam_role.runner_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
+}
+
+resource "aws_iam_role_policy_attachment" "runner_sns_attach" {
+  role       = aws_iam_role.runner_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSNSFullAccess"
+}
+
+resource "aws_iam_role_policy" "runner_eks_describe" {
+  name = "LuxeRunnerEKSDescribe"
+  role = aws_iam_role.runner_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{ Effect = "Allow", Action = "eks:DescribeCluster", Resource = "*" }]
+  })
+}
+
 resource "aws_iam_instance_profile" "runner_profile" {
   name = "luxe-github-runner-profile"
   role = aws_iam_role.runner_role.name
 }
 
 ##########################
-# 3.5 NEW SECURITY GROUP (The Fix)
+# 3.5 Security Group (Outbound Access)
 ##########################
+# FIX: This allows the runner to download Docker and talk to GitHub/AWS
 resource "aws_security_group" "runner_sg" {
   name_prefix = "luxe-runner-sg-"
   description = "Security group for GitHub Runner"
   vpc_id      = module.vpc.vpc_id
 
-  # Allow ALL Outbound Traffic (Required for yum, git, docker, secrets manager)
+  # Allow ALL Outbound Traffic (Crucial for yum, git, docker)
   egress {
     from_port   = 0
     to_port     = 0
@@ -77,9 +99,7 @@ resource "aws_security_group" "runner_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "luxe-runner-sg"
-  }
+  tags = { Name = "luxe-runner-sg" }
 }
 
 ##########################
@@ -88,6 +108,8 @@ resource "aws_security_group" "runner_sg" {
 resource "aws_launch_template" "runner_lt" {
   name_prefix   = "luxe-runner-"
   image_id      = data.aws_ami.amazon_linux_2023.id
+  
+  # FinOps: t2.micro is standard Free Tier
   instance_type = "t2.micro" 
   
   iam_instance_profile {
@@ -96,7 +118,7 @@ resource "aws_launch_template" "runner_lt" {
 
   network_interfaces {
     associate_public_ip_address = true
-    # FIX: Use the new Permissive Security Group
+    # FIX: Use the specific SG that allows egress
     security_groups             = [aws_security_group.runner_sg.id]
   }
   
@@ -129,7 +151,7 @@ resource "aws_autoscaling_group" "runner_asg" {
   
   min_size         = 0
   max_size         = 1
-  desired_capacity = 0 # FinOps
+  desired_capacity = 0 # Scale to 1 manually to test
 
   mixed_instances_policy {
     launch_template {
@@ -137,10 +159,12 @@ resource "aws_autoscaling_group" "runner_asg" {
         launch_template_id = aws_launch_template.runner_lt.id
         version            = "$Latest"
       }
+      # Fallback types if one is unavailable
       override { instance_type = "t3.micro" }
       override { instance_type = "t2.micro" }
     }
     instances_distribution {
+      # Use On-Demand for the first instance to guarantee launch (Free Tier eligible)
       on_demand_base_capacity = 1
       spot_allocation_strategy = "capacity-optimized"
     }
