@@ -10,7 +10,7 @@ phases:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
-      # Build from the current directory (.) where Dockerfile is located
+      # Build from the current directory (.)
       - docker build -t $ECR_REPO_URL:latest .
       - docker tag $ECR_REPO_URL:latest $ECR_REPO_URL:$IMAGE_TAG
   post_build:

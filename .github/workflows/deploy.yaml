@@ -1,12 +1,10 @@
+
 name: Build and Deploy
 
-# -----------------------------------------------------------
-# 👇 THIS IS YOUR WEBHOOK / TRIGGER
-# -----------------------------------------------------------
 on:
   push:
-    branches: [ "main", "feature/*" ] # Triggers on push to main OR feature branches
-  workflow_dispatch:                  # Allows manual button click
+    branches: [ "main", "feature/*" ]
+  workflow_dispatch:
     inputs:
       runner_type:
         description: 'Select Runner'
@@ -17,8 +15,6 @@ on:
         - ubuntu-latest
         - self-hosted
 
-# -----------------------------------------------------------
-
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: luxe-jewelry-store-project
@@ -28,22 +24,19 @@ env:
 jobs:
   build-and-deploy:
     name: Build & Deploy
-    runs-on: ${{ inputs.runner_type || 'self-hosted' }} # Default to your EC2 Runner if triggered by push
+    runs-on: ${{ inputs.runner_type || 'self-hosted' }}
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # Logic to choose Dev vs Prod namespace based on branch
     - name: Set Environment
       id: env-selector
       run: |
         if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
           echo "NAMESPACE=luxe-app-prod" >> $GITHUB_ENV
-          echo "Deploying to PRODUCTION environment"
         else
           echo "NAMESPACE=luxe-app-dev" >> $GITHUB_ENV
-          echo "Deploying to DEVELOPMENT environment"
         fi
 
     - name: Configure AWS Credentials
@@ -64,7 +57,7 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
       run: |
         echo "Building Docker image..."
-        # Assumes Dockerfile is in the root. If in backend/, change to: docker build -t ... ./backend
+        # Build from the current directory (.)
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
@@ -77,10 +70,10 @@ jobs:
       run: |
         # 1. Update Image in deployment.yaml
         sed -i "s|IMAGE_PLACEHOLDER|${{ steps.build-image.outputs.image }}|g" k8s/deployment.yaml
-
+        
         # 2. Update Namespace in all yaml files (Dev vs Prod)
         sed -i "s|namespace: luxe-app|namespace: ${{ env.NAMESPACE }}|g" k8s/*.yaml
-
+        
         # 3. Apply to Cluster
         kubectl apply -f k8s/ -n ${{ env.NAMESPACE }}
 
