@@ -1,5 +1,5 @@
 ##########################
-# 1. Data Source: Latest Amazon Linux 2023
+# 1. Data Source
 ##########################
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true
@@ -11,7 +11,7 @@ data "aws_ami" "amazon_linux_2023" {
 }
 
 ##########################
-# 2. Secrets Manager (Shell)
+# 2. Secrets Manager
 ##########################
 resource "aws_secretsmanager_secret" "github_token" {
   name        = "github-runner-token"
@@ -20,11 +20,10 @@ resource "aws_secretsmanager_secret" "github_token" {
 }
 
 ##########################
-# 3. IAM Role for Runner
+# 3. IAM Role
 ##########################
 resource "aws_iam_role" "runner_role" {
   name = "luxe-github-runner-role"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -63,13 +62,32 @@ resource "aws_iam_instance_profile" "runner_profile" {
 }
 
 ##########################
+# 3.5 NEW SECURITY GROUP (The Fix)
+##########################
+resource "aws_security_group" "runner_sg" {
+  name_prefix = "luxe-runner-sg-"
+  description = "Security group for GitHub Runner"
+  vpc_id      = module.vpc.vpc_id
+
+  # Allow ALL Outbound Traffic (Required for yum, git, docker, secrets manager)
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "luxe-runner-sg"
+  }
+}
+
+##########################
 # 4. Launch Template
 ##########################
 resource "aws_launch_template" "runner_lt" {
   name_prefix   = "luxe-runner-"
   image_id      = data.aws_ami.amazon_linux_2023.id
-  
-  # FIX: Switch to t2.micro (Free Tier Eligible)
   instance_type = "t2.micro" 
   
   iam_instance_profile {
@@ -78,7 +96,8 @@ resource "aws_launch_template" "runner_lt" {
 
   network_interfaces {
     associate_public_ip_address = true
-    security_groups             = [module.vpc.default_security_group_id]
+    # FIX: Use the new Permissive Security Group
+    security_groups             = [aws_security_group.runner_sg.id]
   }
   
   metadata_options {
@@ -110,7 +129,7 @@ resource "aws_autoscaling_group" "runner_asg" {
   
   min_size         = 0
   max_size         = 1
-  desired_capacity = 0
+  desired_capacity = 0 # FinOps
 
   mixed_instances_policy {
     launch_template {
@@ -118,21 +137,12 @@ resource "aws_autoscaling_group" "runner_asg" {
         launch_template_id = aws_launch_template.runner_lt.id
         version            = "$Latest"
       }
-      
-      # FIX: Only use Free Tier eligible types in override list
-      override {
-        instance_type = "t3.micro"
-      }
-      override {
-        instance_type = "t2.micro"
-      }
+      override { instance_type = "t3.micro" }
+      override { instance_type = "t2.micro" }
     }
-
     instances_distribution {
-      # FIX: Prioritize On-Demand usage (Free Tier applies to On-Demand, not Spot)
-      on_demand_base_capacity                  = 1
-      on_demand_percentage_above_base_capacity = 0 
-      spot_allocation_strategy                 = "capacity-optimized"
+      on_demand_base_capacity = 1
+      spot_allocation_strategy = "capacity-optimized"
     }
   }
 
