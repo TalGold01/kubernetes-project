@@ -1,5 +1,5 @@
-# Use a lightweight Python image
-FROM python:3.9-slim
+# FIX: Use Amazon ECR Public to avoid Docker Hub Rate Limiting
+FROM public.ecr.aws/docker/library/python:3.9-slim
 
 # Set working directory
 WORKDIR /app
@@ -16,5 +16,5 @@ COPY . .
 # Expose port 80
 EXPOSE 80
 
-# Start command (Adjust 'app.py' to your main file)
+# Start command
 CMD ["python", "app.py"]
