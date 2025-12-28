@@ -20,6 +20,7 @@ GITHUB_PAT=$(echo $SECRET_JSON | jq -r .token)
 
 # 5. Get Registration Token
 REPO_URL="${repo_url}"
+# Extract owner/repo from URL (e.g., TalGold01/kubernetes-project)
 REPO_PATH=$(echo "$REPO_URL" | sed 's/https:\/\/github.com\///')
 
 REG_TOKEN=$(curl -s -X POST -H "Authorization: token $GITHUB_PAT" -H "Accept: application/vnd.github+json" https://api.github.com/repos/$REPO_PATH/actions/runners/registration-token | jq -r .token)
@@ -36,6 +37,6 @@ chown -R ec2-user:ec2-user /actions-runner
 # Run as ec2-user (now that it owns the folder)
 runuser -l ec2-user -c "cd /actions-runner && ./config.sh --url $REPO_URL --token $REG_TOKEN --name aws-ec2-runner-$(hostname) --labels self-hosted,ec2 --unattended"
 
-# Install service (must be run as root, but pointing to ec2-user)
+# Install service
 ./svc.sh install ec2-user
 ./svc.sh start

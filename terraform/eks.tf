@@ -12,10 +12,10 @@ module "vpc" {
   public_subnets  = ["10.10.1.0/24", "10.10.2.0/24"]
   private_subnets = ["10.10.101.0/24", "10.10.102.0/24"]
 
-  # FinOps: No NAT Gateway
+  # FinOps: No NAT Gateway (Saves ~$30/mo)
   enable_nat_gateway = false 
   
-  # Mandatory for public nodes
+  # Mandatory for public nodes to reach internet without NAT
   map_public_ip_on_launch = true
 
   public_subnet_tags = {
@@ -40,7 +40,7 @@ module "eks" {
   version = "~> 19.21"
 
   cluster_name    = "luxe-eks"
-  cluster_version = "1.32"
+  cluster_version = "1.32" # Standard Support (Cheaper)
 
   vpc_id                   = module.vpc.vpc_id
   subnet_ids               = module.vpc.private_subnets
@@ -48,13 +48,18 @@ module "eks" {
 
   cluster_endpoint_public_access = true
 
-  # Auth ConfigMap (Crucial for CodeBuild)
+  # --- AUTH CONFIGMAP (CRITICAL FOR CI/CD) ---
   manage_aws_auth_configmap = true
 
   aws_auth_roles = [
     {
       rolearn  = "arn:aws:iam::349020400385:role/luxe-codebuild-role"
       username = "codebuild"
+      groups   = ["system:masters"]
+    },
+    {
+      rolearn  = "arn:aws:iam::349020400385:role/luxe-github-runner-role"
+      username = "github-runner"
       groups   = ["system:masters"]
     },
     {
@@ -72,14 +77,13 @@ module "eks" {
       subnet_ids = module.vpc.public_subnets
       associate_public_ip_address = true
 
-      # DEMO SETTINGS:
-      # We use 3 micros to ensure enough RAM for system pods + your app.
+      # Stability Config: 3 nodes minimum to handle system overhead on micros
       min_size     = 2
       max_size     = 4
       desired_size = 3 
 
       capacity_type  = "SPOT"
-      instance_types = ["t3.micro"] # Free tier eligible type
+      instance_types = ["t3.micro"] # Free Tier Eligible
       
       labels = {
         role = "spot"
