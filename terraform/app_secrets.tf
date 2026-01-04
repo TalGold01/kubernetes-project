@@ -1,11 +1,9 @@
-# This creates the secret box for your Application (DB keys, API keys, etc.)
 resource "aws_secretsmanager_secret" "app_config" {
   name        = "luxe-app-config"
   description = "Configuration secrets for the Luxe App"
   recovery_window_in_days = 0
 }
 
-# We put a dummy value in it so the pod doesn't crash on startup
 resource "aws_secretsmanager_secret_version" "app_config_val" {
   secret_id     = aws_secretsmanager_secret.app_config.id
   secret_string = jsonencode({
@@ -14,10 +12,8 @@ resource "aws_secretsmanager_secret_version" "app_config_val" {
   })
 }
 
-# Creating a dedicated role for the App Service Account
 resource "aws_iam_role" "app_sa_role" {
   name = "luxe-app-sa-role"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -27,10 +23,9 @@ resource "aws_iam_role" "app_sa_role" {
       }
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
-        # FIX: Changed to StringLike to allow wildcard matching
-        StringLike = {
-          # This allows system:serviceaccount:luxe-app-dev:default AND luxe-app-prod:default
-          "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" = "system:serviceaccount:luxe-app-*:default"
+        StringEquals = {
+          # STRICT MATCHING: Only allows the 'default' service account in 'luxe-app' namespace
+          "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" = "system:serviceaccount:luxe-app:default"
         }
       }
     }]

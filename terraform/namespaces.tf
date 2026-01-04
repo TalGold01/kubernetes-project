@@ -17,26 +17,12 @@ resource "kubernetes_namespace_v1" "argo" {
   }
 }
 
-# --- Multi-Environment Setup ---
-
-# Development Environment (For feature/* branches)
-resource "kubernetes_namespace_v1" "app_dev" {
+# App Namespace (Single Environment)
+resource "kubernetes_namespace_v1" "app" {
   metadata {
-    name = "luxe-app-dev"
+    name = "luxe-app"
     labels = {
-      environment = "dev"
-      name        = "luxe-app-dev"
-    }
-  }
-}
-
-# Production Environment (For main branch)
-resource "kubernetes_namespace_v1" "app_prod" {
-  metadata {
-    name = "luxe-app-prod"
-    labels = {
-      environment = "prod"
-      name        = "luxe-app-prod"
+      name = "luxe-app"
     }
   }
 }
