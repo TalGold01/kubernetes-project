@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "feature/*" ]
   workflow_dispatch:
     inputs:
       runner_type:
@@ -19,7 +19,6 @@ env:
   ECR_REPOSITORY: luxe-jewelry-store-project
   EKS_CLUSTER_NAME: luxe-eks
   SNS_TOPIC_ARN: arn:aws:sns:us-east-1:349020400385:luxe-pipeline-notifications
-  NAMESPACE: luxe-app # Hardcoded single namespace
 
 jobs:
   build-and-deploy:
@@ -33,9 +32,18 @@ jobs:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
+        # FIX: Removed Secrets. The runner will now use its attached IAM Role.
+        # This complies with the "No credentials file" rule and is more secure.
+
+    - name: Set Environment
+      id: env-selector
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "NAMESPACE=luxe-app-prod" >> $GITHUB_ENV
+        else
+          echo "NAMESPACE=luxe-app-dev" >> $GITHUB_ENV
+        fi
 
     - name: Login to Amazon ECR
       id: login-ecr
@@ -48,6 +56,7 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
       run: |
         echo "Building Docker image..."
+        # Build from the current directory (.)
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
@@ -58,10 +67,14 @@ jobs:
 
     - name: Deploy to EKS
       run: |
-        # 1. Update Image
+        # 1. Update Image in deployment.yaml
         sed -i "s|IMAGE_PLACEHOLDER|${{ steps.build-image.outputs.image }}|g" k8s/deployment.yaml
         
-        # 2. Apply
+        # 2. Update Namespace in all yaml files
+        # We replace the hardcoded 'luxe-app' with the dynamic env namespace
+        sed -i "s|namespace: luxe-app|namespace: ${{ env.NAMESPACE }}|g" k8s/*.yaml
+        
+        # 3. Apply to Cluster
         kubectl apply -f k8s/ -n ${{ env.NAMESPACE }}
 
     - name: Notify SNS
