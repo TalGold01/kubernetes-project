@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: luxe-app
-  namespace: luxe-app # Pipeline replaces this with luxe-app-dev or luxe-app-prod
+  namespace: luxe-app
   labels:
     app: luxe-app
 spec:
@@ -18,7 +18,7 @@ spec:
       serviceAccountName: default
       containers:
       - name: luxe-app-container
-        image: IMAGE_PLACEHOLDER # Pipeline replaces this with ECR URI
+        image: IMAGE_PLACEHOLDER
         ports:
         - containerPort: 80
         resources:
