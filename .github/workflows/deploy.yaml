@@ -19,6 +19,7 @@ env:
   ECR_REPOSITORY: luxe-jewelry-store-project
   EKS_CLUSTER_NAME: luxe-eks
   SNS_TOPIC_ARN: arn:aws:sns:us-east-1:349020400385:luxe-pipeline-notifications
+  AWS_DEFAULT_REGION: us-east-1
 
 jobs:
   build-and-deploy:
@@ -29,12 +30,10 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-region: ${{ env.AWS_REGION }}
-        # FIX: Removed Secrets. The runner will now use its attached IAM Role.
-        # This complies with the "No credentials file" rule and is more secure.
+    # Verify we are using the Runner's IAM Role
+    - name: Verify AWS Identity
+      run: |
+        aws sts get-caller-identity
 
     - name: Set Environment
       id: env-selector
@@ -48,6 +47,7 @@ jobs:
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
+      # FIX: Removed 'with: region' input. It reads env.AWS_REGION automatically.
 
     - name: Build and Push
       id: build-image
@@ -56,7 +56,6 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
       run: |
         echo "Building Docker image..."
-        # Build from the current directory (.)
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
@@ -71,17 +70,18 @@ jobs:
         sed -i "s|IMAGE_PLACEHOLDER|${{ steps.build-image.outputs.image }}|g" k8s/deployment.yaml
         
         # 2. Update Namespace in all yaml files
-        # We replace the hardcoded 'luxe-app' with the dynamic env namespace
-        sed -i "s|namespace: luxe-app|namespace: ${{ env.NAMESPACE }}|g" k8s/*.yaml
+        # FIX: Used $NAMESPACE instead of ${{ env.NAMESPACE }} to satisfy linter
+        sed -i "s|namespace: luxe-app|namespace: $NAMESPACE|g" k8s/*.yaml
         
         # 3. Apply to Cluster
-        kubectl apply -f k8s/ -n ${{ env.NAMESPACE }}
+        kubectl apply -f k8s/ -n $NAMESPACE
 
     - name: Notify SNS
       if: always()
       run: |
         STATUS="${{ job.status }}"
+        # FIX: Used $NAMESPACE bash variable here too
         aws sns publish \
           --topic-arn ${{ env.SNS_TOPIC_ARN }} \
-          --message "Deployment to ${{ env.NAMESPACE }} finished with status: $STATUS" \
+          --message "Deployment to $NAMESPACE finished with status: $STATUS" \
           --subject "EKS Deployment Notification"
