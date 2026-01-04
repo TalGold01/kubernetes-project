@@ -1,8 +1,6 @@
 ##########################
-# 1. GitHub Connection (CodeStar)
+# 1. GitHub Connection
 ##########################
-# TRAP: After 'terraform apply', you MUST go to AWS Console -> Developer Tools -> Settings -> Connections
-# and click "Update Pending Connection" to authorize access to your GitHub.
 resource "aws_codestarconnections_connection" "github" {
   name          = "luxe-github-connection"
   provider_type = "GitHub"
@@ -17,7 +15,7 @@ resource "aws_s3_bucket" "codepipeline_bucket" {
 }
 
 ##########################
-# 3. CodeBuild: Build & Push (Docker)
+# 3. CodeBuild: Build & Push
 ##########################
 resource "aws_codebuild_project" "build" {
   name          = "luxe-build-push"
@@ -33,7 +31,7 @@ resource "aws_codebuild_project" "build" {
     image                       = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
-    privileged_mode             = true # Required for Docker
+    privileged_mode             = true 
 
     environment_variable {
       name  = "ECR_REPO_URL"
@@ -52,7 +50,7 @@ resource "aws_codebuild_project" "build" {
 }
 
 ##########################
-# 4. CodeBuild: Deploy (Kubectl)
+# 4. CodeBuild: Deploy
 ##########################
 resource "aws_codebuild_project" "deploy" {
   name          = "luxe-deploy-eks"
@@ -72,7 +70,6 @@ resource "aws_codebuild_project" "deploy" {
       name  = "EKS_CLUSTER_NAME"
       value = module.eks.cluster_name
     }
-    # CRITICAL: Needed so buildspec_deploy.yml can replace the image placeholder
     environment_variable {
       name  = "ECR_REPO_URL"
       value = aws_ecr_repository.luxe_repo.repository_url
@@ -109,7 +106,7 @@ resource "aws_codepipeline" "pipeline" {
 
       configuration = {
         ConnectionArn    = aws_codestarconnections_connection.github.arn
-        FullRepositoryId = "TalGold01/kubernetes-project" # Ensure this matches your Repo
+        FullRepositoryId = "TalGold01/kubernetes-project" 
         BranchName       = "main"
       }
     }
@@ -136,14 +133,16 @@ resource "aws_codepipeline" "pipeline" {
     name = "Deploy"
     action {
       name            = "Deploy"
-      category        = "Build" # CodeBuild acting as Deployer
+      category        = "Build"
       owner           = "AWS"
       provider        = "CodeBuild"
       input_artifacts = ["source_output", "build_output"]
       version         = "1"
 
       configuration = {
-        ProjectName = aws_codebuild_project.deploy.name
+        ProjectName   = aws_codebuild_project.deploy.name
+        # FIX: Explicitly tell CodeBuild which artifact contains the buildspec and code
+        PrimarySource = "source_output"
       }
     }
   }
