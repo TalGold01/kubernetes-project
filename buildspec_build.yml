@@ -1,25 +1,25 @@
 version: 0.2
 phases:
-  install:
-    commands:
-      - echo Installing kubectl...
-      - curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.30.0/2024-05-12/bin/linux/amd64/kubectl
-      - chmod +x ./kubectl
-      - mv ./kubectl /usr/local/bin/kubectl
   pre_build:
     commands:
-      - echo Logging into EKS...
-      - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region us-east-1
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO_URL
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
   build:
     commands:
-      - echo Deploying to Kubernetes...
-      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
-      
-      # 1. Replace Image Placeholder
-      - sed -i "s|IMAGE_PLACEHOLDER|$ECR_REPO_URL:$COMMIT_HASH|g" k8s/deployment.yaml
-      
-      # 2. FIX: Replace Namespace (luxe-app -> luxe-app-prod)
-      - sed -i "s|namespace: luxe-app|namespace: luxe-app-prod|g" k8s/*.yaml
-      
-      # 3. Apply manifests
-      - kubectl apply -f k8s/ -n luxe-app-prod
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      # Build from the current directory (.)
+      - docker build -t $ECR_REPO_URL:latest .
+      - docker tag $ECR_REPO_URL:latest $ECR_REPO_URL:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker image...
+      - docker push $ECR_REPO_URL:latest
+      - docker push $ECR_REPO_URL:$IMAGE_TAG
+      # FIX: Wrapped in quotes to prevent YAML parsing errors
+      - "printf '[{\"name\":\"luxe-app-container\",\"imageUri\":\"%s\"}]' $ECR_REPO_URL:$IMAGE_TAG > imagedefinitions.json"
+artifacts:
+  files: imagedefinitions.json
