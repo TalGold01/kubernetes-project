@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ "main", "feature/*" ]
+    branches: [ "main" ]
   workflow_dispatch:
     inputs:
       runner_type:
@@ -19,6 +19,7 @@ env:
   ECR_REPOSITORY: luxe-jewelry-store-project
   EKS_CLUSTER_NAME: luxe-eks
   SNS_TOPIC_ARN: arn:aws:sns:us-east-1:349020400385:luxe-pipeline-notifications
+  NAMESPACE: luxe-app # Hardcoded single namespace
 
 jobs:
   build-and-deploy:
@@ -28,17 +29,6 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-
-    - name: Set Environment
-      id: env-selector
-      run: |
-        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-          echo "NAMESPACE=luxe-app-prod" >> $GITHUB_ENV
-          echo "Deploying to PRODUCTION environment"
-        else
-          echo "NAMESPACE=luxe-app-dev" >> $GITHUB_ENV
-          echo "Deploying to DEVELOPMENT environment"
-        fi
 
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -58,7 +48,6 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
       run: |
         echo "Building Docker image..."
-        # Uses Dockerfile in root
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
@@ -69,24 +58,17 @@ jobs:
 
     - name: Deploy to EKS
       run: |
-        # Use shell variable $NAMESPACE instead of ${{ env.NAMESPACE }} to satisfy linter
-        echo "Deploying to namespace: $NAMESPACE"
-        
         # 1. Update Image
         sed -i "s|IMAGE_PLACEHOLDER|${{ steps.build-image.outputs.image }}|g" k8s/deployment.yaml
         
-        # 2. Update Namespace
-        sed -i "s|namespace: luxe-app|namespace: $NAMESPACE|g" k8s/*.yaml
-        
-        # 3. Apply
-        kubectl apply -f k8s/ -n $NAMESPACE
+        # 2. Apply
+        kubectl apply -f k8s/ -n ${{ env.NAMESPACE }}
 
     - name: Notify SNS
       if: always()
       run: |
         STATUS="${{ job.status }}"
-        # For notification message, we can still use interpolation or shell vars
         aws sns publish \
           --topic-arn ${{ env.SNS_TOPIC_ARN }} \
-          --message "Deployment to $NAMESPACE finished with status: $STATUS" \
+          --message "Deployment to ${{ env.NAMESPACE }} finished with status: $STATUS" \
           --subject "EKS Deployment Notification"
