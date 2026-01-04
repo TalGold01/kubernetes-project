@@ -15,8 +15,8 @@ phases:
       - echo Deploying to Kubernetes...
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       
-      # Replace IMAGE_PLACEHOLDER in deployment.yaml with the real image URI from ECR
+      # 1. Replace Image Placeholder with real ECR URI
       - sed -i "s|IMAGE_PLACEHOLDER|$ECR_REPO_URL:$COMMIT_HASH|g" k8s/deployment.yaml
       
-      # Apply the manifests to the PROD namespace
-      - kubectl apply -f k8s/ -n luxe-app-prod
+      # 2. Apply manifests to the single 'luxe-app' namespace
+      - kubectl apply -f k8s/ -n luxe-app
