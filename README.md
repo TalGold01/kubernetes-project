@@ -58,14 +58,15 @@ terraform apply -var="environment=dev" --auto-approve
 terraform apply -var="environment=prod" --auto-approve
 
 ```
-2. CI/CD Integration (GitHub Actions)
+
+## 2. CI/CD Integration (GitHub Actions)
 
 Changes pushed to the main branch trigger the CI/CD pipeline which automatically:
 
-   1. Scales the self-hosted EC2 runner from 0 to 1.
+   * 1. Scales the self-hosted EC2 runner from 0 to 1.
 
-   2. Builds the Docker image and pushes to immutable ECR tags.
+   * 2. Builds the Docker image and pushes to immutable ECR tags.
 
-   3. Updates the cluster state and notifies via AWS SNS.
+   * 3. Updates the cluster state and notifies via AWS SNS.
 
-   4. Scales the runner back to 0 upon completion.
+   * 4. Scales the runner back to 0 upon completion.
