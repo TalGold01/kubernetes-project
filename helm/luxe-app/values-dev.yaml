@@ -1,0 +1,8 @@
+environment: dev
+replicaCount: 1
+
+image:
+  tag: "dev"
+
+persistence:
+  size: 2Gi # Save money in dev

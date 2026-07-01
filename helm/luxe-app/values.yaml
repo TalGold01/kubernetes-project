@@ -1,0 +1,19 @@
+# Default values for luxe-app
+replicaCount: 1
+environment: default
+
+image:
+  repository: talgold01/luxe-jewelry-store
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 80
+
+# The PVC configuration to validate your resume claim
+persistence:
+  enabled: true
+  storageClass: "luxe-ebs-retain"
+  accessMode: ReadWriteOnce
+  size: 5Gi

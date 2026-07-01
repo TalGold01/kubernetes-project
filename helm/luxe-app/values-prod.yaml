@@ -1,0 +1,8 @@
+environment: prod
+replicaCount: 3 # High availability in production
+
+image:
+  tag: "stable"
+
+persistence:
+  size: 10Gi # Larger log storage for prod
