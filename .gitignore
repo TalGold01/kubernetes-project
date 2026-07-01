@@ -1,4 +1,4 @@
-actions-runner/
+ls actions-runner/
 aws/
 awscliv2.zip
 .terraform/
@@ -6,3 +6,8 @@ awscliv2.zip
 *.tfstate.backup
 .terraform.lock.hcl
 .DS_Store
+*.terraform*
+*.tfstate*
+*.backup
+actions-runner/
+terraform/actions-runner/
