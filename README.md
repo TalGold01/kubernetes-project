@@ -1,96 +1,71 @@
-# 💎 Luxe Jewelry Store - AWS Cloud Migration Project
+# ☸️ Enterprise Kubernetes Infrastructure & SRE Operations
+> **Production-Grade EKS Architecture for the Luxe E-Commerce Platform**
 
-## 📖 Project Overview
+![Kubernetes](https://img.shields.io/badge/Kubernetes-EKS-326CE5?logo=kubernetes&logoColor=white)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
+![Helm](https://img.shields.io/badge/Deployment-Helm-0F1689?logo=helm&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Observability-Prometheus_%7C_Grafana-E6522C?logo=prometheus&logoColor=white)
 
-This project demonstrates a full migration of a legacy workload to a cloud-native architecture on AWS. It leverages **Infrastructure as Code (Terraform)**, **Kubernetes (EKS)**, and **GitOps principles** to achieve a scalable, secure, and cost-optimized deployment.
+## 📖 SRE Overview
+This repository contains the declarative infrastructure and deployment configuration for a highly available, secure, and cost-optimized microservices environment. Built with a focus on **Site Reliability Engineering (SRE)** principles, it leverages Terraform for infrastructure state, Helm for dynamic application releases, and the AWS Secrets Store CSI driver for zero-trust credential management.
 
----
+## 🏗️ Core Architecture & Engineering Highlights
 
-## 🏗️ Architecture
+### 💰 1. FinOps & Cost Optimization
+* **Spot Instance Fleet:** Utilizing capacity-optimized `t3.micro` Spot Instances for the EKS node group, achieving up to 70% compute cost reduction.
+* **Network Cost Reduction:** Architected a custom VPC with Public/Private subnets but explicitly disabled NAT Gateways (~$30/mo savings), utilizing precise Security Group routing for egress.
+* **Scale-to-Zero CI/CD:** Self-hosted GitHub Actions runners operate on EC2 Auto Scaling Groups that automatically scale to 0 when idle.
+* **Storage Lifecycle:** Automated S3 Lifecycle policies purge stale deployment artifacts after 7 days to eliminate zombie storage costs.
 
-### 1. Infrastructure (Terraform)
+### 📦 2. Declarative Releases (Helm & Terraform)
+* **Dynamic Helm Charts:** Replaced static manifests with a custom Helm chart (`helm/luxe-app/`) to standardize microservice deployments.
+* **Environment-Scoped Parity:** Implemented `values-dev.yaml` and `values-prod.yaml` injected dynamically via Terraform's `helm_release` resource, ensuring isolated and repeatable environment scaling.
 
-* **Compute:** Amazon EKS v1.32 (Standard Support) using **Spot Instances** (`t3.micro`) for 70% cost reduction.
-* **Networking:** Custom VPC with Public/Private subnets. **NAT Gateways are disabled** to minimize Free Tier costs; nodes utilize Public IPs for egress via Security Groups.
-* **CI/CD Agents:** Self-Hosted GitHub Runners on EC2, managed by an **Auto Scaling Group** (ASG) and Launch Template.
-* **Storage:**
-  * **ECR:** Private container registry with immutable tags.
-  * **S3 + CloudFront:** Hosting for static frontend assets (Bonus).
-  * **AWS Backup:** Automated daily retention for EC2 instances.
+### 💾 3. Stateful Persistence (EBS & PVCs)
+* **Persistent Volume Claims:** Configured AWS EBS-backed StorageClasses with `Retain` reclaim policies to ensure stateful application logs and data survive pod eviction and cluster scaling events.
 
-### 2. CI/CD Pipelines
+### 🛡️ 4. Zero-Trust Security
+* **AWS Secrets Store CSI Driver:** Completely eliminated native Kubernetes Secrets. Pods authenticate via IAM Roles for Service Accounts (IRSA) to mount AWS Secrets Manager credentials directly as ephemeral volumes.
+* **Least Privilege:** Granular IAM policies restrict node and pod access exclusively to required ARNs. No hardcoded tokens exist anywhere in the repository.
+* **Network Isolation:** Application layer and database layers are strictly isolated within private subnets.
 
-We implemented two parallel pipelines to demonstrate flexibility:
-
-1. **GitHub Actions:**
-   * Runs on self-hosted EC2 runners.
-   * Builds Docker image -> Pushes to ECR -> Deploys to EKS.
-   * Sends SNS notifications on status.
-
-2. **AWS CodePipeline:**
-   * Native AWS integration.
-   * **CodeBuild 1:** Builds & Pushes Docker image.
-   * **CodeBuild 2:** Authenticates via IAM and deploys manifests to EKS.
-
-### 3. Kubernetes Configuration
-
-* **Ingress:** AWS Load Balancer Controller (ALB) for external access.
-* **Scaling:** Cluster Autoscaler + Metrics Server for HPA.
-* **Secrets:** AWS Secrets Store CSI Driver to mount secrets (DB passwords) directly from AWS Secrets Manager into Pods.
-* **Namespaces:** `luxe-app`, `luxe-github`, `luxe-argo`.
+### 📊 5. Observability & MTTD
+* **Kube-Prometheus-Stack:** Fully integrated monitoring and alerting pipeline. Architected automated Grafana dashboards to rapidly detect pod failures, latency spikes, and resource starvation, drastically reducing Mean Time To Detect (MTTD).
 
 ---
 
-## 🚀 How to Deploy
+## 📂 Repository Structure
+* `/terraform` - Core IaC (VPC, EKS cluster, IRSA, FinOps configurations, and dynamic Helm releases).
+* `/helm/luxe-app` - Custom application chart with environment-scoped values and PVC definitions.
+* `/src` - Application source code, Dockerfiles, and build specifications.
+* `/docs` - Architecture diagrams, Grafana dashboard exports, and project reports.
 
-### Prerequisites
+---
 
-* AWS CLI configured.
-* Terraform v1.0+.
-* GitHub Personal Access Token (PAT).
+## 🚀 Deployment Pipeline
 
-### Step 1: Infrastructure Provisioning
+### 1. Infrastructure Provisioning
+The entire cluster, networking layer, and application Helm chart are deployed concurrently via Terraform.
 
 ```bash
 cd terraform
 terraform init
-terraform apply --auto-approve
+
+# Deploy the Dev Environment
+terraform apply -var="environment=dev" --auto-approve
+
+# Deploy the Prod Environment
+terraform apply -var="environment=prod" --auto-approve
+
 ```
+2. CI/CD Integration (GitHub Actions)
 
-### Step 2: Configuration
+Changes pushed to the main branch trigger the CI/CD pipeline which automatically:
 
-1. **Inject GitHub Token:**
-   ```bash
-   aws secretsmanager put-secret-value --secret-id github-runner-token --region us-east-1 --secret-string "{\"token\":\"ghp_YOUR_TOKEN\"}"
-   ```
+   1. Scales the self-hosted EC2 runner from 0 to 1.
 
-2. **Activate Runner:**
-   * Go to AWS Console -> EC2 -> Auto Scaling Groups.
-   * Scale `luxe-runner-asg` to **1**.
+   2. Builds the Docker image and pushes to immutable ECR tags.
 
-3. **Authorize Pipeline:**
-   * Go to AWS Console -> Developer Tools -> Settings -> Connections.
-   * Update Pending Connection for GitHub.
+   3. Updates the cluster state and notifies via AWS SNS.
 
-### Step 3: Application Deployment
-
-Push changes to the `main` branch to trigger the pipeline.
-
-```bash
-git push origin main
-```
-
----
-
-## 💰 FinOps & Optimization Highlights
-
-* **Zero-Cost Idle:** Runners scale to 0 when not in use.
-* **Spot Strategy:** Usage of `capacity-optimized` allocation strategy for EKS nodes.
-* **Storage Cleanup:** S3 Lifecycle policies delete artifacts after 7 days.
-* **Network:** Elimination of NAT Gateway charges (~$30/mo savings).
-
-## 🛡️ Security Measures
-
-* **No Hardcoded Secrets:** All tokens fetched dynamically from Secrets Manager.
-* **Least Privilege:** IAM roles scoped strictly to required resources (IRSA).
-* **Network Isolation:** Database and App layers isolated in private subnets.
+   4. Scales the runner back to 0 upon completion.
