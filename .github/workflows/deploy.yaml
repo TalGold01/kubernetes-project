@@ -47,7 +47,6 @@ jobs:
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
-      # FIX: Removed 'with: region' input. It reads env.AWS_REGION automatically.
 
     - name: Build and Push
       id: build-image
@@ -58,7 +57,7 @@ jobs:
         echo "Building Docker image..."
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY" >> $GITHUB_OUTPUT
 
     - name: Update KubeConfig
       run: |
@@ -66,21 +65,20 @@ jobs:
 
     - name: Deploy to EKS
       run: |
-        # 1. Update Image in deployment.yaml
-        sed -i "s|IMAGE_PLACEHOLDER|${{ steps.build-image.outputs.image }}|g" k8s/deployment.yaml
-        
-        # 2. Update Namespace in all yaml files
-        # FIX: Used $NAMESPACE instead of ${{ env.NAMESPACE }} to satisfy linter
-        sed -i "s|namespace: luxe-app|namespace: $NAMESPACE|g" k8s/*.yaml
-        
-        # 3. Apply to Cluster
-        kubectl apply -f k8s/ -n $NAMESPACE
+        # Ensure Helm target namespace exists
+        kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+        # Deploy using Helm
+        helm upgrade --install luxe-app ./helm/luxe-app \
+          -f ./helm/luxe-app/values-${NAMESPACE#luxe-app-}.yaml \
+          --set image.repository=${{ steps.build-image.outputs.image }} \
+          --set image.tag=${{ github.sha }} \
+          -n $NAMESPACE
 
     - name: Notify SNS
       if: always()
       run: |
         STATUS="${{ job.status }}"
-        # FIX: Used $NAMESPACE bash variable here too
         aws sns publish \
           --topic-arn ${{ env.SNS_TOPIC_ARN }} \
           --message "Deployment to $NAMESPACE finished with status: $STATUS" \
