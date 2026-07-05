@@ -1,4 +1,4 @@
-# System Namespaces
+# System Namespaces (CI/CD & GitOps)
 resource "kubernetes_namespace_v1" "github" {
   metadata {
     name = "luxe-github"
@@ -17,12 +17,21 @@ resource "kubernetes_namespace_v1" "argo" {
   }
 }
 
-# App Namespace (Single Environment)
-resource "kubernetes_namespace_v1" "app" {
+# App Namespaces (Multi-Environment)
+resource "kubernetes_namespace_v1" "luxe_app_dev" {
   metadata {
-    name = "luxe-app"
+    name = "luxe-app-dev"
     labels = {
-      name = "luxe-app"
+      name = "luxe-app-dev"
+    }
+  }
+}
+
+resource "kubernetes_namespace_v1" "luxe_app_prod" {
+  metadata {
+    name = "luxe-app-prod"
+    labels = {
+      name = "luxe-app-prod"
     }
   }
 }
